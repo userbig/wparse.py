@@ -4,10 +4,9 @@ import aiofiles
 import aiohttp
 import os
 import logging
-import requests
 
 # "rate limit". also need to read this: https://developers.eveonline.com/blog/article/error-limiting-imminent
-semaphore = asyncio.Semaphore(5)
+semaphore = asyncio.Semaphore(20)
 
 
 async def main() -> None:
@@ -36,38 +35,33 @@ async def process_war(war_id: int) -> None:
         pass
 
     # logging.debug(f'Processing war {war_id}')
-    specific_war_url_format = 'https://esi.evetech.net/latest/wars/{0}/'
 
-    async with semaphore:
-        async with aiohttp.ClientSession(conn_timeout=25) as session:
-            try:
-                logging.debug('Getting data')
+    attempts = 0
+    retries = 5
 
-                async with session.get(specific_war_url_format.format(war_id)) as response:
-                    if response.status == 200:
-                        data = await response.text()
-                        async with aiofiles.open('./downloader_wars/{0}.json'.format(war_id), mode='w') as file:
-                            await file.write(data)
-                    else:
-                        logging.debug(response.status)
-            except aiohttp.ServerTimeoutError:
-                logging.debug(f'Failed with timeout')
-            except Exception as e:
-                logging.debug(f'Some shit happens with connection', e)
+    while attempts < retries:  # need to make while True for proper retries logging
+        async with semaphore:
+            async with aiohttp.ClientSession(conn_timeout=5) as session:
+                try:
+                    await process(war_id, session)
+                    break
+                except Exception as e:
+                    # logging.debug('Some shit happens with connection', e)
+                    attempts += 1
+                    sleeping_time = 2 * attempts
+                    logging.debug(f'Start Retry for {war_id}. Sleeping time: {sleeping_time} seconds')
+                    await asyncio.sleep(sleeping_time)
 
 
-async def sync_process_war(war_id: int) -> None:
-    if 472166 < war_id < 473146:
-        logging.debug(f'Skipping war_id {war_id}')
-        pass
-
-    logging.debug(f'Processing war {war_id}')
-    specific_war_url_format = 'https://esi.evetech.net/latest/wars/{0}/'
-
-    response = requests.get(specific_war_url_format.format(war_id))
-    data = response.text
-    with open('./downloader_wars/{0}.json'.format(war_id), mode='w') as file:
-        file.write(data)
+async def process(war_id: int, session: aiohttp.ClientSession):
+    logging.debug('Getting data')
+    async with session.get('https://esi.evetech.net/latest/wars/{0}/'.format(war_id)) as response:
+        if response.status == 200:
+            data = await response.text()
+            async with aiofiles.open('./downloader_wars/{0}.json'.format(war_id), mode='w') as file:
+                await file.write(data)
+        else:
+            logging.debug(response.status)
 
 
 if __name__ == '__main__':

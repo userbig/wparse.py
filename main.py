@@ -12,7 +12,7 @@ semaphore = asyncio.Semaphore(20)
 async def main() -> None:
     latest_existing_war = await get_latest_war()
 
-    chunk = 500
+    chunk = 20000
     current_war = latest_existing_war
     while current_war > latest_existing_war - chunk:
         asyncio.create_task(process_war(current_war))
@@ -41,7 +41,7 @@ async def process_war(war_id: int) -> None:
 
     while attempts < retries:  # need to make while True for proper retries logging
         async with semaphore:
-            async with aiohttp.ClientSession(conn_timeout=5) as session:
+            async with aiohttp.ClientSession(conn_timeout=35) as session:
                 try:
                     await process(war_id, session)
                     break
@@ -54,16 +54,19 @@ async def process_war(war_id: int) -> None:
 
 
 async def process(war_id: int, session: aiohttp.ClientSession):
-    logging.debug('Getting data')
+    # logging.debug('Getting data')
     async with session.get('https://esi.evetech.net/latest/wars/{0}/'.format(war_id)) as response:
-        if response.status == 200:
+        if response.status == 200: # this check looks like shit - need to rework
             data = await response.text()
             async with aiofiles.open('./downloader_wars/{0}.json'.format(war_id), mode='w') as file:
                 await file.write(data)
         else:
             logging.debug(response.status)
 
-
+"""
+I potentially reach anti-DDOS protection. At certain point ALL request become painfully slow. And its not only 
+related to `esi.esitech.net`, but also for other sites. I hope that i NOT getting limited by my internet provider
+"""
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
     path = './downloader_wars'

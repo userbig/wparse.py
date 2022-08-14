@@ -36,9 +36,10 @@ async def process_war(war_id: int) -> None:
 
     attempts = 0
     retries = 5
+
     while True:
         if attempts >= retries:
-            logging.debug(f'Reached max retries for war_id: {war_id}')
+            await log_failed_execution(war_id)
             break
         async with semaphore:
             async with aiohttp.ClientSession(conn_timeout=1) as session:
@@ -51,6 +52,13 @@ async def process_war(war_id: int) -> None:
                     sleeping_time = 2 * attempts
                     logging.debug(f'Start Retry for {war_id}. Sleeping time: {sleeping_time} seconds')
                     await asyncio.sleep(sleeping_time)
+
+
+async def log_failed_execution(war_id) -> None:
+    log_message = f'Reached max retries for war_id: {war_id}'
+    logging.debug(log_message)
+    async with aiofiles.open('./failed.txt'.format(war_id), mode='a+') as file:
+        await file.write(log_message + '\n')
 
 
 async def process(war_id: int, session: aiohttp.ClientSession):
@@ -70,8 +78,11 @@ related to `esi.esitech.net`, but also for other sites. I hope that i NOT gettin
 """
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
+
+    # clear data and logs from previous executions
     path = './downloader_wars'
     shutil.rmtree(path)
+    os.remove('./failed.txt')
 
     if not os.path.isdir(path):
         os.mkdir(path)

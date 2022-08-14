@@ -34,14 +34,14 @@ async def process_war(war_id: int) -> None:
         logging.debug(f'Skipping war_id {war_id}')
         pass
 
-    # logging.debug(f'Processing war {war_id}')
-
     attempts = 0
     retries = 5
-
-    while attempts < retries:  # need to make while True for proper retries logging
+    while True:
+        if attempts >= retries:
+            logging.debug(f'Reached max retries for war_id: {war_id}')
+            break
         async with semaphore:
-            async with aiohttp.ClientSession(conn_timeout=35) as session:
+            async with aiohttp.ClientSession(conn_timeout=1) as session:
                 try:
                     await process(war_id, session)
                     break
@@ -56,12 +56,13 @@ async def process_war(war_id: int) -> None:
 async def process(war_id: int, session: aiohttp.ClientSession):
     # logging.debug('Getting data')
     async with session.get('https://esi.evetech.net/latest/wars/{0}/'.format(war_id)) as response:
-        if response.status == 200: # this check looks like shit - need to rework
+        if response.status == 200:  # this check looks like shit - need to rework
             data = await response.text()
             async with aiofiles.open('./downloader_wars/{0}.json'.format(war_id), mode='w') as file:
                 await file.write(data)
         else:
             logging.debug(response.status)
+
 
 """
 I potentially reach anti-DDOS protection. At certain point ALL request become painfully slow. And its not only 
@@ -70,7 +71,6 @@ related to `esi.esitech.net`, but also for other sites. I hope that i NOT gettin
 if __name__ == '__main__':
     logging.basicConfig(level='DEBUG')
     path = './downloader_wars'
-
     shutil.rmtree(path)
 
     if not os.path.isdir(path):
